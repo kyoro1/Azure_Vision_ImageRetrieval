@@ -36,12 +36,13 @@ class AzureImageRetrieval():
             "Content-Type": "application/json",
             "Ocp-Apim-Subscription-Key": self.CV_KEY
         }
+        ## metadata store
+        self.nameVectors = self.config['metadata']['vectors_name']
         self.vectors = dict()
         ## initialization of image SDK
         self.analysis_options = sdk.ImageAnalysisOptions()
         self.service_options = sdk.VisionServiceOptions(self.CV_ENDPOINT,
                                                         self.CV_KEY)
-
         ## search index with Faiss format
         self.dimension = self.config['faiss']['dimension']
         self.index_flat_l2 = faiss.IndexFlatL2(self.dimension)
@@ -207,12 +208,10 @@ class AzureImageRetrieval():
             print(e)
             raise
 
-    def storeObj(self,
-                 filename: str,
-                 objects: list) -> None:
+    def storeObj(self) -> None:
         try:
-            with open(filename, "wb") as f:
-                pickle.dump(objects, f)
+            with open(self.nameVectors, "wb") as f:
+                pickle.dump(self.vectors, f)
         except Exception as e:
             print(e)
             raise
@@ -233,10 +232,9 @@ class AzureImageRetrieval():
             print(e)
             raise
 
-    def loadObj(self,
-                filename:str) -> list:
+    def loadObj(self) -> list:
         try:
-            with open(filename, 'rb') as f:
+            with open(self.nameVectors, 'rb') as f:
                 return pickle.load(f)
         except Exception as e:
             print(e)
