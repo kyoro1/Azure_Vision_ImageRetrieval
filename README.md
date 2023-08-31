@@ -6,6 +6,7 @@ Other reference:
 - [Revolutionizing Image Search with Vectors](https://learn.microsoft.com/en-us/shows/ai-show/revolutionizing-image-search-with-vectors)
 - [What is Azure AI Vision?](https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/overview)
 - [Computer Vision の Image Retrieval を使って画像のベクトル検索を行う](https://zenn.dev/microsoft/articles/17574f3569914b) in Japanese
+- [Quickstart: Image Analysis 4.0](https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/quickstarts-sdk/image-analysis-client-library-40?tabs=visual-studio%2Clinux&pivots=programming-language-python)
 
 # How to use
 
