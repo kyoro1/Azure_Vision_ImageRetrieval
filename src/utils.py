@@ -1,4 +1,5 @@
 import os, sys
+import json
 import yaml
 import time
 import requests
@@ -6,6 +7,8 @@ from flickrapi import FlickrAPI
 import azure.ai.vision as sdk
 import numpy as np
 import pandas as pd
+import faiss
+import pickle
 
 class AzureImageRetrieval():
     def __init__(self,
@@ -21,9 +24,14 @@ class AzureImageRetrieval():
         ## Configuaration in Azure
         self.CV_ENDPOINT = self.config['Azure']['ENDPOINT']
         self.CV_KEY = self.config['Azure']['KEY']
-        self.endpoint = self.CV_ENDPOINT + '/computervision/retrieval:vectorizeImage?api-version=2023-02-01-preview&modelVersion=latest'
+        self.vectorizeImageEndpoint = self.CV_ENDPOINT + '/computervision/retrieval:vectorizeImage?api-version=2023-02-01-preview&modelVersion=latest'
+        self.vectorizeTextEndpoint = self.CV_ENDPOINT + '/computervision/retrieval:vectorizeText?api-version=2023-02-01-preview&modelVersion=latest'
         self.headers = {
             "Content-Type": "application/octet-stream",  # binary data in sending API
+            "Ocp-Apim-Subscription-Key": self.CV_KEY
+        }
+        self.headersForVectorizeText = {
+            "Content-Type": "application/json",
             "Ocp-Apim-Subscription-Key": self.CV_KEY
         }
         self.vectors = dict()
@@ -32,9 +40,15 @@ class AzureImageRetrieval():
         self.service_options = sdk.VisionServiceOptions(self.CV_ENDPOINT,
                                                         self.CV_KEY)
 
-        ## VectorDB
+        ## meta data store
         self.df = None
-        self.vectorDB = self.config['app']['vectorDB']
+        self.metaIndex = self.config['meta_data']['df_name']
+        ## search index with Faiss format
+        self.dimension = self.config['faiss']['dimension']
+        self.index_flat_l2 = faiss.IndexFlatL2(self.dimension)
+        self.filename_index = self.config['faiss']['filename']
+        self.top_N = self.config['faiss']['top_N']
+
 
     def load_config(self):
         '''
@@ -86,13 +100,42 @@ class AzureImageRetrieval():
     def getVector(self, 
                   image: str) -> np.array:
         '''
-        Get vector with API for one image
+        Get vector with Vector Image API for one image
         '''
         try:
             with open(image, mode="rb") as f:
                 image_bin = f.read()
-            response = requests.post(self.endpoint, headers=self.headers, data=image_bin)
+            response = requests.post(self.vectorizeImageEndpoint
+                                     ,headers=self.headers
+                                     ,data=image_bin)
             return np.array(response.json()['vector'], dtype='float32')
+        except Exception as e:
+            print(e)
+            raise
+
+    def getVectorWithText(self,
+                          query_text: str) -> np.array:
+        '''
+        Convert query text to vector with computer vision API        
+        '''
+        try:
+            data = {
+                'text': query_text
+            }
+            response = requests.post(self.vectorizeTextEndpoint
+                                     ,headers=self.headersForVectorizeText
+                                     ,data=json.dumps(data))
+            return np.array(response.json()['vector'], dtype='float32').reshape(1, -1)
+        except Exception as e:
+            print(e)
+            raise
+
+    def searchIndexWithText(self,
+                              query_text:str) -> list:
+        try:
+            query_vector = self.getVectorWithText(query_text=query_text)
+            ## Search
+            return self.index_flat_l2.search(query_vector, self.top_N)
         except Exception as e:
             print(e)
             raise
@@ -139,11 +182,11 @@ class AzureImageRetrieval():
             images = [image for image in os.listdir(folder) if image.endswith('.jpg')]
             print(images)
             ## Analyze each image with API
-            for image in images[:self.NUMBER_PROCESS_IMAGES]:
+            for i, image in enumerate(images[:self.NUMBER_PROCESS_IMAGES]):
                 ## Set image path
                 image_path = os.path.join(folder, image)
                 ## Get vector for image
-                vector = self.getVector(image=image_path)
+                vector = self.getVector(image=image_path).reshape(1, -1)
                 print(vector)
                 ## Analyze with Azure Vision API
                 analyzed_result = self.getImageProperties(image=image_path)
@@ -154,26 +197,64 @@ class AzureImageRetrieval():
 
                 ## Store the results
                 self.vectors[image] = {}
+                self.vectors[image]['index'] = i
                 self.vectors[image]['vector'] = vector
-#                self.vectors[image]['properties'] = analyzed_result
                 self.vectors[image]['caption'] = caption_content
                 time.sleep(1.5)
+                ## Store vector in search index
+                self.index_flat_l2.add(vector)
             ## Convert to DataFrame
             self.convertDataFrame()
         except Exception as e:
             print(e)
             raise
 
-    def storeDataFrame(self):
+
+    def storeObj(self,
+                 filename: str,
+                 objects: list) -> None:
         try:
-            self.df.to_pickle(self.vectorDB)
+            with open(filename, "wb") as f:
+                pickle.dump(objects, f)
         except Exception as e:
             print(e)
             raise
 
-    def loadDataFrame(self):
+    def storeIndex(self) -> None:
         try:
-            self.df = pd.read_pickle(self.vectorDB)
+            with open(self.filename_index, 'wb') as f:
+                pickle.dump(self.index_flat_l2, f)
+        except Exception as e:
+            print(e)
+            raise
+
+    def loadIndex(self) -> None:
+        try:
+            with open(self.filename_index, 'rb') as f:
+                self.index_flat_l2 = pickle.load(f)
+        except Exception as e:
+            print(e)
+            raise
+
+    def loadObj(self,
+                filename:str) -> list:
+        try:
+            with open(filename, 'rb') as f:
+                return pickle.load(f)
+        except Exception as e:
+            print(e)
+            raise
+
+    def storeMetaIndex(self):
+        try:
+            self.df.to_pickle(self.metaIndex)
+        except Exception as e:
+            print(e)
+            raise
+
+    def loadMetaIndex(self):
+        try:
+            self.df = pd.read_pickle(self.metaIndex)
         except Exception as e:
             print(e)
             raise
