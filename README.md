@@ -5,6 +5,7 @@ This repository aims at giving sample code for vector search with [Azure Compute
 Other reference:
 - [Revolutionizing Image Search with Vectors](https://learn.microsoft.com/en-us/shows/ai-show/revolutionizing-image-search-with-vectors)
 - [What is Azure AI Vision?](https://learn.microsoft.com/en-us/azure/ai-services/computer-vision/overview)
+- [Computer Vision の Image Retrieval を使って画像のベクトル検索を行う](https://zenn.dev/microsoft/articles/17574f3569914b) in Japanese
 
 # How to use
 
