@@ -166,13 +166,6 @@ class AzureImageRetrieval():
             print(e)
             raise
 
-    def convertDataFrame(self):
-        try:
-            self.df = pd.DataFrame(self.vectors).T
-        except Exception as e:
-            print(e)
-            raise
-
     def getVectorFromImages(self):
         '''
         - input:
