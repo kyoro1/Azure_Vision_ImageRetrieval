@@ -6,9 +6,9 @@ import requests
 from flickrapi import FlickrAPI
 import azure.ai.vision as sdk
 import numpy as np
-import pandas as pd
 import faiss
 import pickle
+import matplotlib.pyplot as plt
 
 class AzureImageRetrieval():
     def __init__(self,
@@ -16,6 +16,8 @@ class AzureImageRetrieval():
         ## Prepare config file
         self.config_file = config_file
         self.load_config()
+        ## image configuration
+        self.image_folder = self.config['image']['folder']
         ## Configuration in retrieving images in Flickr
         self.API_KEY = self.config['flickr']['API_KEY']
         self.API_SECRET = self.config['flickr']['API_SECRET']
@@ -40,15 +42,14 @@ class AzureImageRetrieval():
         self.service_options = sdk.VisionServiceOptions(self.CV_ENDPOINT,
                                                         self.CV_KEY)
 
-        ## meta data store
-        self.df = None
-        self.metaIndex = self.config['meta_data']['df_name']
         ## search index with Faiss format
         self.dimension = self.config['faiss']['dimension']
         self.index_flat_l2 = faiss.IndexFlatL2(self.dimension)
         self.filename_index = self.config['faiss']['filename']
         self.top_N = self.config['faiss']['top_N']
-
+        ## images
+        self.images = []
+        self.num_cols = self.config['display']['num_cols']
 
     def load_config(self):
         '''
@@ -77,7 +78,7 @@ class AzureImageRetrieval():
             for i, photo in enumerate(photos['photos']['photo']):
                 if i % 10 == 0:
                     print(f'{i} / {self.NUMBER_OF_IMAGES} images downloaded')
-                time.sleep(3)
+                time.sleep(2)
                 photo_id = photo['id']
                 farm_id = photo['farm']
                 server_id = photo['server']
@@ -171,23 +172,22 @@ class AzureImageRetrieval():
             print(e)
             raise
 
-    def getVectorFromImages(self,
-                            folder: str):
+    def getVectorFromImages(self):
         '''
         - input:
             folder: Local folder name including images
         '''
         try:
             ## Get image file name
-            images = [image for image in os.listdir(folder) if image.endswith('.jpg')]
-            print(images)
+            images = [image for image in os.listdir(self.image_folder) if image.endswith('.jpg')]
+            print(f'Target images: {len(images)}')
             ## Analyze each image with API
             for i, image in enumerate(images[:self.NUMBER_PROCESS_IMAGES]):
                 ## Set image path
-                image_path = os.path.join(folder, image)
+                image_path = os.path.join(self.image_folder, image)
                 ## Get vector for image
                 vector = self.getVector(image=image_path).reshape(1, -1)
-                print(vector)
+                print(image, vector)
                 ## Analyze with Azure Vision API
                 analyzed_result = self.getImageProperties(image=image_path)
                 try:
@@ -200,15 +200,12 @@ class AzureImageRetrieval():
                 self.vectors[image]['index'] = i
                 self.vectors[image]['vector'] = vector
                 self.vectors[image]['caption'] = caption_content
-                time.sleep(1.5)
+                time.sleep(3)
                 ## Store vector in search index
                 self.index_flat_l2.add(vector)
-            ## Convert to DataFrame
-            self.convertDataFrame()
         except Exception as e:
             print(e)
             raise
-
 
     def storeObj(self,
                  filename: str,
@@ -245,16 +242,48 @@ class AzureImageRetrieval():
             print(e)
             raise
 
-    def storeMetaIndex(self):
+    def sortImages(self,
+                   query_text: str):
+        '''
+        Convert index number to image file names
+        '''
         try:
-            self.df.to_pickle(self.metaIndex)
+            self.images = []
+            D, I = self.searchIndexWithText(query_text=query_text)
+            for i in I[0]:
+                image_name = {k for (k, v) in self.vectors.items() if v['index'] == i}.pop()
+                self.images.append(image_name)
         except Exception as e:
             print(e)
             raise
 
-    def loadMetaIndex(self):
+    def displayWithText(self,
+                        query_text: str) -> None:
         try:
-            self.df = pd.read_pickle(self.metaIndex)
+            image_directory = './downloaded_images/'
+            ## Get images
+            self.sortImages(query_text=query_text)
+            num_images = len(self.images)
+            num_rows = num_images  # 行数
+            num_cols = self.num_cols
+
+            # configuration of subplot
+            fig, axes = plt.subplots(num_rows, num_cols, figsize=(10, 6))
+
+            for i, ax in enumerate(axes.flat):
+                if i < num_images:
+                    ## Show image
+                    image_path = os.path.join(image_directory, self.images[i])
+                    image = plt.imread(image_path)
+                    ax.imshow(image)
+                    ## Get caption from API
+                    caption = {v['caption'] for (k, v) in self.vectors.items() if k == self.images[i]}.pop()
+                    ax.set_title(caption)
+                ax.axis('off')
+
+            plt.tight_layout()
+            plt.show()
+
         except Exception as e:
             print(e)
             raise
